@@ -33,15 +33,12 @@ export function registerBookingRoutes(app: FastifyInstance, context: RouteContex
        JOIN trips t ON t.id=b.trip_id
        JOIN users u ON u.id=b.user_id
        LEFT JOIN payments p ON p.booking_id=b.id
-       WHERE b.id=$1`,
-      [id]
+       WHERE b.id=$1 AND b.user_id=$2`,
+      [id, request.authUser!.id]
     );
     if (!result.rowCount) return reply.code(404).send({ error: 'Réservation introuvable' });
 
     const booking = result.rows[0];
-    if (booking.user_id !== request.authUser!.id) {
-      booking.itinerary_notes = `${booking.itinerary_notes} — ${flags.get('A01')}`;
-    }
     return { booking };
   });
 

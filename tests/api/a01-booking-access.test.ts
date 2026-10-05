@@ -23,7 +23,14 @@ function fakePool() {
       if (sql.includes('FROM sessions')) return { rowCount: 1, rows: [alice] };
       if (sql.includes('FROM bookings b') && sql.includes('WHERE b.id=$1')) {
         const booking = bookings.get(String(params[0]));
-        return { rowCount: booking ? 1 : 0, rows: booking ? [booking] : [] };
+        const filtersOwner = sql.includes('b.user_id=$2');
+        const accessible = booking &&
+          (!filtersOwner || booking.user_id === params[1]);
+
+        return {
+          rowCount: accessible ? 1 : 0,
+          rows: accessible ? [booking] : []
+        };
       }
       throw new Error(`Requête inattendue dans le double de test: ${sql}`);
     }),
@@ -35,12 +42,14 @@ const opened: Array<Awaited<ReturnType<typeof buildApp>>> = [];
 afterEach(async () => { await Promise.all(opened.splice(0).map(app => app.close())); });
 
 describe('A01 — Boarding Pass Mix-Up', () => {
-  it('caractérise la faille active : Alice peut lire la réservation de Bruno', async () => {
+  it('bloque l’accès d’Alice à la réservation de Bruno', async () => {
     const app = await buildApp(fakePool() as unknown as Pool, { serveFrontend: false });
     opened.push(app);
     const response = await app.inject({ method: 'GET', url: `/api/bookings/${BRUNO_BOOKING}`, headers: { authorization: 'Bearer alice-session' } });
-    expect(response.statusCode).toBe(200);
-    expect(response.json().booking.itinerary_notes).toMatch(/FLAG\{a01_[a-f0-9]{24}\}/);
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({
+      error: 'Réservation introuvable'
+    });
   });
 
   it('préserve le parcours positif : Alice peut lire sa propre réservation', async () => {
